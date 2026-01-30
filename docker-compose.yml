@@ -56,6 +56,56 @@ services:
       retries: 10
       start_period: 60s
 
+  # OpenSearch - Full-text search engine
+  opensearch:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: abac-opensearch
+    environment:
+      - cluster.name=abac-cluster
+      - node.name=opensearch-node
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    networks:
+      - abac-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # OpenSearch Dashboards (optional - for visualization)
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.1
+    container_name: abac-opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - abac-network
+    profiles:
+      - dashboards
+
   # ABAC API Service
   abac-api:
     build: .
@@ -69,12 +119,15 @@ services:
       - KEYCLOAK_CLIENT_ID=abac-api
       - KEYCLOAK_CLIENT_SECRET=abac-api-secret-change-in-production
       - DISABLE_AUTH=false
+      - OPENSEARCH_URL=http://opensearch:9200
     ports:
       - "3000:3000"
     volumes:
       - abac-data:/app/data
     depends_on:
       keycloak:
+        condition: service_healthy
+      opensearch:
         condition: service_healthy
     networks:
       - abac-network
@@ -94,8 +147,12 @@ services:
     environment:
       - NODE_ENV=production
       - DB_PATH=/app/data/abac.db
+      - OPENSEARCH_URL=http://opensearch:9200
     volumes:
       - abac-data:/app/data
+    depends_on:
+      opensearch:
+        condition: service_healthy
     networks:
       - abac-network
     profiles:
@@ -110,10 +167,14 @@ services:
       - NODE_ENV=development
       - DB_PATH=/app/data/abac-dev.db
       - DISABLE_AUTH=true
+      - OPENSEARCH_URL=http://opensearch:9200
     ports:
       - "3001:3000"
     volumes:
       - abac-data-dev:/app/data
+    depends_on:
+      opensearch:
+        condition: service_healthy
     networks:
       - abac-network
     profiles:
@@ -125,6 +186,8 @@ volumes:
   abac-data:
     driver: local
   abac-data-dev:
+    driver: local
+  opensearch-data:
     driver: local
 
 networks:

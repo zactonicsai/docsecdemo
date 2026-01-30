@@ -434,8 +434,165 @@ for (const policy of fieldPolicies) {
   console.log(`  Created field policy: ${policy.name} (${policy.effect})`);
 }
 
+// Add field policies for search document fields
+console.log('\nCreating search document field policies...');
+
+const searchFieldPolicies = [
+  {
+    id: uuidv4(),
+    name: 'Allow public document fields',
+    description: 'Low sensitivity fields visible to all',
+    effect: 'allow',
+    priority: 5,
+    conditions: [
+      { subject_type: 'field', attribute_name: 'sensitivity', operator: 'equals', value: 'low' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'Mask confidential notes for non-executives',
+    description: 'Confidential notes partially visible to managers',
+    effect: 'mask',
+    field_pattern: 'confidential_notes',
+    priority: 40,
+    conditions: [
+      { subject_type: 'user', attribute_name: 'clearance_level', operator: 'less_than', value: '4' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'Redact confidential notes for low clearance',
+    description: 'Confidential notes hidden from low clearance users',
+    effect: 'redact',
+    mask_value: '***CONFIDENTIAL - EXECUTIVE ACCESS ONLY***',
+    field_pattern: 'confidential_notes',
+    priority: 45,
+    conditions: [
+      { subject_type: 'user', attribute_name: 'clearance_level', operator: 'less_than', value: '3' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'Mask internal comments for non-department',
+    description: 'Internal comments masked for users outside department',
+    effect: 'mask',
+    field_pattern: 'internal_comments',
+    priority: 35,
+    conditions: [
+      { subject_type: 'field', attribute_name: 'sensitivity', operator: 'equals', value: 'medium' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'Redact financial data for non-finance',
+    description: 'Financial details only visible to finance department',
+    effect: 'redact',
+    mask_value: '***FINANCIAL DATA - FINANCE DEPT ONLY***',
+    field_pattern: 'financial_data',
+    priority: 50,
+    conditions: [
+      { subject_type: 'user', attribute_name: 'department', operator: 'not_equals', value: 'finance' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'Finance sees financial data',
+    description: 'Finance department has access to financial data',
+    effect: 'allow',
+    field_pattern: 'financial_data',
+    priority: 55,
+    conditions: [
+      { subject_type: 'user', attribute_name: 'department', operator: 'equals', value: 'finance' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'Deny PII data to most users',
+    description: 'PII fields hidden except for HR',
+    effect: 'deny',
+    field_pattern: 'pii_data',
+    priority: 60,
+    conditions: [
+      { subject_type: 'user', attribute_name: 'department', operator: 'not_equals', value: 'hr' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'HR sees PII data',
+    description: 'HR department has access to PII data',
+    effect: 'allow',
+    field_pattern: 'pii_data',
+    priority: 65,
+    conditions: [
+      { subject_type: 'user', attribute_name: 'department', operator: 'equals', value: 'hr' }
+    ]
+  },
+  {
+    id: uuidv4(),
+    name: 'Admin full access to all fields',
+    description: 'Admins can see everything',
+    effect: 'allow',
+    priority: 200,
+    conditions: [
+      { subject_type: 'user', attribute_name: 'role', operator: 'equals', value: 'admin' }
+    ]
+  }
+];
+
+for (const policy of searchFieldPolicies) {
+  insertFieldPolicy.run(policy.id, policy.name, policy.description, policy.effect, policy.mask_value || null, policy.priority, policy.field_pattern || null);
+  for (const cond of policy.conditions) {
+    insertFieldPolicyCondition.run(policy.id, cond.subject_type, cond.attribute_name, cond.operator, cond.value);
+  }
+  console.log(`  Created search field policy: ${policy.name} (${policy.effect})`);
+}
+
 // Save database
 db.save();
+
+// ============================================
+// OPENSEARCH INITIALIZATION
+// ============================================
+
+console.log('\n--- OpenSearch Initialization ---');
+
+try {
+  const searchService = require('./search-service');
+  const { sampleDocuments } = require('./sample-documents');
+
+  const opensearchAvailable = await searchService.isAvailable();
+  
+  if (opensearchAvailable) {
+    console.log('OpenSearch is available, initializing indices...');
+    
+    // Initialize indices
+    await searchService.initializeIndices();
+    console.log('  Indices created');
+
+    // Index sample documents
+    console.log('\nIndexing sample documents...');
+    const result = await searchService.bulkIndexDocuments(sampleDocuments);
+    console.log(`  Indexed ${result.indexed} documents`);
+
+    // Show document summary
+    console.log('\nIndexed Documents:');
+    sampleDocuments.forEach(doc => {
+      console.log(`  - ${doc.title} (${doc.department}, ${doc.classification})`);
+    });
+
+    // Show stats
+    const stats = await searchService.getSearchStats();
+    console.log(`\nOpenSearch Stats:`);
+    console.log(`  Documents: ${stats.document_count}`);
+    console.log(`  Index size: ${stats.index_size_human}`);
+  } else {
+    console.log('OpenSearch not available, skipping document indexing');
+    console.log('Documents will need to be indexed manually when OpenSearch is running');
+  }
+} catch (error) {
+  console.log('OpenSearch initialization skipped:', error.message);
+  console.log('Run seed again after OpenSearch is available to index documents');
+}
 
 console.log('\n========================================');
 console.log('Database seeded successfully!');
@@ -463,6 +620,11 @@ console.log(`curl "http://localhost:3000/api/cells/resources/${employeeDbId}/dat
 
 console.log('\n# Get Employee Database with cell-level filtering for eve (HR)');
 console.log(`curl "http://localhost:3000/api/cells/resources/${employeeDbId}/data?user_id=${users[4].id}"`);
+
+console.log('\n# Search documents with cell-level filtering');
+console.log(`curl -X POST http://localhost:3000/api/search \\
+  -H "Content-Type: application/json" \\
+  -d '{"query": "security architecture", "user_id": "${users[0].id}"}'`);
 
   // Close database
   db.close();

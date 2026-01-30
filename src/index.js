@@ -23,6 +23,7 @@ const resourcesRouter = require('./routes/resources');
 const policiesRouter = require('./routes/policies');
 const accessRouter = require('./routes/access');
 const cellsRouter = require('./routes/cells');
+const searchRouter = require('./routes/search');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -73,6 +74,7 @@ app.use('/api/resources', authenticate, resourcesRouter);
 app.use('/api/policies', authenticate, requireRole(['admin', 'policy-manager']), policiesRouter);
 app.use('/api/access', authenticate, accessRouter);
 app.use('/api/cells', authenticate, cellsRouter);  // Cell-level access control
+app.use('/api/search', authenticate, searchRouter);  // Full-text search with cell-level filtering
 
 // API documentation
 app.get('/', (req, res) => {
@@ -170,13 +172,31 @@ app.get('/', (req, res) => {
           'POST /api/cells/access/check-batch': 'Check access to multiple fields',
           'POST /api/cells/access/filter': 'Filter arbitrary data through policies'
         }
+      },
+      search: {
+        note: 'Full-text search with cell-level field protection (OpenSearch)',
+        info: 'Search results are automatically filtered based on user permissions',
+        'GET /api/search/health': 'Check OpenSearch availability and stats',
+        'POST /api/search': 'Full-text search with cell-level filtering (query, user_id, filters)',
+        'POST /api/search/aggregations': 'Search with faceted aggregations',
+        'GET /api/search/documents/:id?user_id=X': 'Get single document with filtering',
+        'POST /api/search/documents': 'Index a new document',
+        'POST /api/search/documents/bulk': 'Bulk index documents',
+        'PUT /api/search/documents/:id': 'Update/reindex a document',
+        'DELETE /api/search/documents/:id': 'Delete a document',
+        'GET /api/search/stats': 'Get search index statistics',
+        field_protection: {
+          description: 'Sensitive fields in search results are protected',
+          protected_fields: ['confidential_notes', 'internal_comments', 'financial_data', 'pii_data'],
+          effects: 'Fields may be allowed, masked, redacted, or denied based on user attributes'
+        }
       }
     },
     concepts: {
       attributes: 'Key-value pairs attached to users and resources (e.g., department=engineering, clearance_level=3)',
       policies: 'Rules that combine conditions on user attributes, resource attributes, environment, and actions',
       conditions: {
-        subject_types: ['user', 'resource', 'environment', 'action'],
+        subject_types: ['user', 'resource', 'field', 'environment', 'action'],
         operators: ['equals', 'not_equals', 'contains', 'in', 'greater_than', 'less_than', 'matches']
       },
       actions: ['create', 'read', 'update', 'delete'],
@@ -187,6 +207,11 @@ app.get('/', (req, res) => {
         field_effects: ['allow', 'deny', 'mask', 'redact'],
         masking: 'Partial data hiding (e.g., SSN: ***-**-1234)',
         redaction: 'Complete replacement with placeholder'
+      },
+      opensearch: {
+        description: 'Full-text search with automatic cell-level filtering',
+        features: ['Full-text search', 'Aggregations/facets', 'Field-level security', 'Search audit logging'],
+        sample_documents: '12 sample documents across engineering, finance, HR, product, legal, and sales departments'
       }
     }
   });

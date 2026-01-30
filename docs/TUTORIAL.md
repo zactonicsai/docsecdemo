@@ -12,12 +12,13 @@
 8. [Resource-Level Access Control](#8-resource-level-access-control)
 9. [Cell-Level Access Control](#9-cell-level-access-control)
 10. [Data Masking and Redaction](#10-data-masking-and-redaction)
-11. [Roles and Permissions](#11-roles-and-permissions)
-12. [Real-World Examples](#12-real-world-examples)
-13. [Architecture Deep Dive](#13-architecture-deep-dive)
-14. [Security Best Practices](#14-security-best-practices)
-15. [API Reference](#15-api-reference)
-16. [Troubleshooting](#16-troubleshooting)
+11. [Full-Text Search with OpenSearch](#11-full-text-search-with-opensearch)
+12. [Roles and Permissions](#12-roles-and-permissions)
+13. [Real-World Examples](#13-real-world-examples)
+14. [Architecture Deep Dive](#14-architecture-deep-dive)
+15. [Security Best Practices](#15-security-best-practices)
+16. [API Reference](#16-api-reference)
+17. [Troubleshooting](#17-troubleshooting)
 
 ---
 
@@ -54,13 +55,13 @@ AND time.hour BETWEEN 9 AND 17
 THEN allow access
 ```
 
-### The Three Levels of Access Control
+### The Four Levels of Access Control
 
-This system provides **three levels** of access control:
+This system provides **four levels** of access control:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    THREE LEVELS OF ACCESS CONTROL                   │
+│                    FOUR LEVELS OF ACCESS CONTROL                    │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
 │  Level 1: API ENDPOINT PROTECTION                                   │
@@ -78,6 +79,11 @@ This system provides **three levels** of access control:
 │  ├── Based on: User attributes vs Field attributes                  │
 │  ├── Effects: Allow / Deny / Mask / Redact                          │
 │  └── Example: Only HR can see SSN; others see ***-**-1234           │
+│                                                                     │
+│  Level 4: SEARCH RESULT PROTECTION                                  │
+│  ├── "Which fields in search results can the user see?"             │
+│  ├── Based on: Same cell-level policies applied to search results   │
+│  └── Example: Search returns documents but sensitive fields masked  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -121,11 +127,14 @@ This system provides **three levels** of access control:
 │  │     (Which fields can the user see? Mask/Redact?)         │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                              │                                  │
-│                              ▼                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    Database                               │  │
-│  │   Users │ Resources │ Fields │ Policies │ Data │ Audit    │  │
-│  └──────────────────────────────────────────────────────────┘  │
+│              ┌───────────────┴───────────────┐                  │
+│              ▼                               ▼                  │
+│  ┌─────────────────────┐         ┌─────────────────────┐       │
+│  │      Database       │         │     OpenSearch      │       │
+│  │  (SQLite/sql.js)    │         │  (Full-text search) │       │
+│  │  Users, Resources,  │         │  Documents with     │       │
+│  │  Policies, Data     │         │  field protection   │       │
+│  └─────────────────────┘         └─────────────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -555,9 +564,214 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
 
 ---
 
-## 11. Roles and Permissions
+## 11. OpenSearch Integration
 
-### 11.1 Keycloak Roles (API Level)
+### 11.1 Overview
+
+OpenSearch provides full-text search capabilities while respecting cell-level access control. When you search for documents, the results are automatically filtered based on your user attributes - sensitive fields may be masked, redacted, or completely hidden.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  SEARCH WITH FIELD PROTECTION                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. User searches: "security architecture"                      │
+│                                                                 │
+│  2. OpenSearch finds matching documents                         │
+│                                                                 │
+│  3. For each document, cell-level filtering is applied:         │
+│     - title: allow (low sensitivity)                            │
+│     - content: allow (low sensitivity)                          │
+│     - confidential_notes: mask (high sensitivity, user L3)      │
+│     - financial_data: redact (non-finance user)                 │
+│     - pii_data: deny (non-HR user)                              │
+│                                                                 │
+│  4. Filtered results returned to user                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 11.2 Document Structure
+
+Documents in OpenSearch have both public and protected fields:
+
+| Field | Sensitivity | Description |
+|-------|-------------|-------------|
+| `title` | low | Document title (searchable) |
+| `content` | low | Main content (searchable) |
+| `summary` | low | Document summary |
+| `author` | low | Document author |
+| `department` | low | Owning department |
+| `classification` | low | public, internal, confidential, restricted |
+| `tags` | low | Document tags |
+| `confidential_notes` | **high** | Internal confidential notes |
+| `internal_comments` | **medium** | Team comments |
+| `financial_data` | **high** | Financial information |
+| `pii_data` | **high** | Personally identifiable information |
+
+### 11.3 Sample Documents
+
+The system includes 12 sample documents across departments:
+
+| Department | Count | Example Documents |
+|------------|-------|-------------------|
+| Engineering | 3 | System Architecture, Database Migration Guide, Security Playbook |
+| Finance | 2 | Q4 Financial Report, Compensation Guidelines |
+| HR | 2 | Employee Handbook, Performance Review Guide |
+| Product | 2 | Product Roadmap, Customer Research Report |
+| Legal | 2 | Data Processing Agreement, IP Guidelines |
+| Sales | 1 | Enterprise Sales Playbook |
+
+### 11.4 Search API
+
+```bash
+# Basic search with cell-level filtering
+curl -X POST "http://localhost:3000/api/search" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "security architecture",
+    "user_id": "USER_UUID"
+  }'
+```
+
+**Response:**
+```json
+{
+  "query": "security architecture",
+  "total": 2,
+  "results": [
+    {
+      "_id": "doc-uuid",
+      "_score": 5.234,
+      "title": "System Architecture Overview",
+      "content": "Our platform is built on...",
+      "department": "engineering",
+      "confidential_notes": "AWS account ID:... [MASKED - 45 chars hidden]",
+      "financial_data": "***FINANCIAL DATA - FINANCE DEPT ONLY***",
+      "_accessControl": {
+        "title": "allow",
+        "content": "allow",
+        "confidential_notes": "mask",
+        "financial_data": "redact",
+        "pii_data": "deny"
+      }
+    }
+  ],
+  "filtered_fields": ["confidential_notes:mask", "financial_data:redact"]
+}
+```
+
+### 11.5 Search with Filters
+
+```bash
+curl -X POST "http://localhost:3000/api/search" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "budget",
+    "user_id": "USER_UUID",
+    "filters": {
+      "department": "finance",
+      "classification": "confidential"
+    },
+    "size": 10
+  }'
+```
+
+### 11.6 Aggregations (Faceted Search)
+
+```bash
+curl -X POST "http://localhost:3000/api/search/aggregations" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "policy", "user_id": "USER_UUID"}'
+```
+
+**Response:**
+```json
+{
+  "total": 5,
+  "aggregations": {
+    "by_department": [
+      { "key": "engineering", "doc_count": 3 },
+      { "key": "hr", "doc_count": 2 }
+    ],
+    "by_classification": [
+      { "key": "internal", "doc_count": 4 },
+      { "key": "confidential", "doc_count": 1 }
+    ]
+  }
+}
+```
+
+### 11.7 Field Visibility by User Type
+
+| User Type | title | content | confidential_notes | financial_data | pii_data |
+|-----------|-------|---------|-------------------|----------------|----------|
+| Engineering (L3) | ✓ | ✓ | Masked | Redacted | Hidden |
+| Finance (L3) | ✓ | ✓ | Masked | ✓ | Hidden |
+| HR (L3) | ✓ | ✓ | Masked | Redacted | ✓ |
+| Executive (L4+) | ✓ | ✓ | ✓ | Per dept | Per dept |
+| Admin | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+### 11.8 Search Field Policies
+
+```javascript
+// Mask confidential notes for non-executives
+{
+  name: "Mask confidential notes",
+  effect: "mask",
+  field_pattern: "confidential_notes",
+  priority: 40,
+  conditions: [
+    { subject_type: "user", attribute_name: "clearance_level", operator: "less_than", value: "4" }
+  ]
+}
+
+// Redact financial data for non-finance
+{
+  name: "Redact financial data",
+  effect: "redact",
+  mask_value: "***FINANCIAL DATA - FINANCE DEPT ONLY***",
+  field_pattern: "financial_data",
+  priority: 50,
+  conditions: [
+    { subject_type: "user", attribute_name: "department", operator: "not_equals", value: "finance" }
+  ]
+}
+
+// Deny PII to non-HR
+{
+  name: "Deny PII data",
+  effect: "deny",
+  field_pattern: "pii_data",
+  priority: 60,
+  conditions: [
+    { subject_type: "user", attribute_name: "department", operator: "not_equals", value: "hr" }
+  ]
+}
+```
+
+### 11.9 Search Audit Logging
+
+All searches are logged for compliance:
+
+```json
+{
+  "user_id": "user-uuid",
+  "query": "security architecture",
+  "results_count": 2,
+  "filtered_fields": ["confidential_notes:mask", "financial_data:redact"],
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+---
+
+## 12. Roles and Permissions
+
+### 12.1 Keycloak Roles (API Level)
 
 | Role | Access |
 |------|--------|
@@ -567,7 +781,7 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
 | `auditor` | Audit log access |
 | `user` | Basic read access |
 
-### 11.2 ABAC Attributes (Data Level)
+### 12.2 ABAC Attributes (Data Level)
 
 | Attribute | Purpose |
 |-----------|---------|
@@ -578,9 +792,9 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
 
 ---
 
-## 12. Real-World Examples
+## 13. Real-World Examples
 
-### 12.1 Healthcare (HIPAA)
+### 13.1 Healthcare (HIPAA)
 
 ```javascript
 // Nurses see masked diagnosis
@@ -595,7 +809,7 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
   ] }
 ```
 
-### 12.2 Financial Services
+### 13.2 Financial Services
 
 ```javascript
 // Traders see only their own trades
@@ -611,7 +825,7 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
   ] }
 ```
 
-### 12.3 Multi-Tenant SaaS
+### 13.3 Multi-Tenant SaaS
 
 ```javascript
 // Tenant isolation
@@ -623,9 +837,9 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
 
 ---
 
-## 13. Architecture Deep Dive
+## 14. Architecture Deep Dive
 
-### 13.1 Key Database Tables
+### 14.1 Key Database Tables
 
 **Resource-Level:**
 - `users`, `user_attributes`
@@ -643,9 +857,9 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
 
 ---
 
-## 14. Security Best Practices
+## 15. Security Best Practices
 
-### 14.1 Policy Design
+### 15.1 Policy Design
 
 ```javascript
 // ✅ Start with default deny
@@ -662,7 +876,7 @@ curl "http://localhost:3000/api/cells/resources/$RESOURCE_ID/data?user_id=$USER_
 { name: "Allow everything", effect: "allow", conditions: [] }  // DANGEROUS
 ```
 
-### 14.2 Defense in Depth
+### 15.2 Defense in Depth
 
 ```
 Layer 1: Network (Firewall)
@@ -671,13 +885,14 @@ Layer 3: Authentication (JWT)
 Layer 4: API Authorization (Roles)
 Layer 5: Resource Authorization (ABAC)
 Layer 6: Cell Authorization (Field policies)
-Layer 7: Data Protection (Encryption)
-Layer 8: Audit (Logging)
+Layer 7: Search Result Filtering (OpenSearch)
+Layer 8: Data Protection (Encryption)
+Layer 9: Audit (Logging)
 ```
 
 ---
 
-## 15. API Reference
+## 16. API Reference
 
 ### Resource-Level
 | Method | Endpoint | Description |
@@ -696,9 +911,22 @@ Layer 8: Audit (Logging)
 | GET | `/api/cells/resources/:id/data?user_id=X` | Get filtered data |
 | POST | `/api/cells/access/check` | Check field access |
 
+### Search (OpenSearch)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/search/health` | Check OpenSearch status |
+| POST | `/api/search` | Full-text search with filtering |
+| POST | `/api/search/aggregations` | Search with facets |
+| GET | `/api/search/documents/:id?user_id=X` | Get document with filtering |
+| POST | `/api/search/documents` | Index a document |
+| POST | `/api/search/documents/bulk` | Bulk index documents |
+| PUT | `/api/search/documents/:id` | Update document |
+| DELETE | `/api/search/documents/:id` | Delete document |
+| GET | `/api/search/stats` | Index statistics |
+
 ---
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
@@ -707,6 +935,9 @@ Layer 8: Audit (Logging)
 | Resource access denied | Check user/resource attributes and policies |
 | Field unexpectedly masked | Check field sensitivity and user clearance |
 | Cell filtering not working | Ensure fields and field policies are defined |
+| OpenSearch not available | Check if container is running: `docker-compose logs opensearch` |
+| Search returns no results | Verify documents are indexed: `GET /api/search/stats` |
+| Search fields not filtered | Check field policies exist for search document fields |
 
 ### Debug Endpoints
 
@@ -716,24 +947,43 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/token-info
 
 # Check single field access
 curl -X POST http://localhost:3000/api/cells/access/check \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"user_id":"...","resource_id":"...","field_id":"...","action":"read"}'
 
 # View recent audit entries
-curl http://localhost:3000/api/access/audit?limit=10
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/access/audit?limit=10
+
+# Check OpenSearch health
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/search/health
+
+# Test search with filtering
+curl -X POST http://localhost:3000/api/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "security", "user_id": "USER_UUID"}'
 ```
 
 ---
 
 ## Summary
 
-This system provides **three-level access control**:
+This system provides **four-level access control**:
 
 1. **API Level**: JWT + role-based endpoint protection
 2. **Resource Level**: ABAC policies for entire resources
 3. **Cell Level**: Field-level policies with masking/redaction
+4. **Search Level**: Cell-level filtering on search results
 
 **Key Features:**
 - Flexible attribute-based policies
 - Automatic data masking by field type
+- Full-text search with field protection
+- 12 sample documents with sensitive fields
 - Complete audit trail
 - Defense in depth architecture
+
+**Components:**
+- **Keycloak**: Authentication and role management
+- **SQLite**: User, resource, policy, and cell data storage
+- **OpenSearch**: Full-text search with field-level security
+- **Express API**: RESTful endpoints with middleware protection
