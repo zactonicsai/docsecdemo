@@ -22,6 +22,7 @@ const usersRouter = require('./routes/users');
 const resourcesRouter = require('./routes/resources');
 const policiesRouter = require('./routes/policies');
 const accessRouter = require('./routes/access');
+const cellsRouter = require('./routes/cells');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -71,6 +72,7 @@ app.use('/api/users', authenticate, usersRouter);
 app.use('/api/resources', authenticate, resourcesRouter);
 app.use('/api/policies', authenticate, requireRole(['admin', 'policy-manager']), policiesRouter);
 app.use('/api/access', authenticate, accessRouter);
+app.use('/api/cells', authenticate, cellsRouter);  // Cell-level access control
 
 // API documentation
 app.get('/', (req, res) => {
@@ -142,6 +144,32 @@ app.get('/', (req, res) => {
         'GET /api/access/audit': 'View audit log',
         'GET /api/access/audit/stats': 'Get audit statistics',
         'DELETE /api/access/audit': 'Clear audit log'
+      },
+      cells: {
+        note: 'Cell/Field-level access control',
+        fields: {
+          'GET /api/cells/resources/:resourceId/fields': 'Get all fields for a resource',
+          'POST /api/cells/resources/:resourceId/fields': 'Define a new field with attributes',
+          'PUT /api/cells/fields/:fieldId/attributes/:attrName': 'Set field attribute (e.g., sensitivity, pii)',
+          'DELETE /api/cells/fields/:fieldId': 'Delete a field definition'
+        },
+        field_policies: {
+          'GET /api/cells/policies': 'List all field-level policies',
+          'POST /api/cells/policies': 'Create a field-level policy (allow/deny/mask/redact)',
+          'DELETE /api/cells/policies/:policyId': 'Delete a field policy',
+          'PATCH /api/cells/policies/:policyId/toggle': 'Toggle policy active status'
+        },
+        data: {
+          'POST /api/cells/resources/:resourceId/data': 'Insert data rows',
+          'GET /api/cells/resources/:resourceId/data?user_id=X': 'Get data with cell-level filtering',
+          'PUT /api/cells/resources/:resourceId/data/:rowId': 'Update a row',
+          'DELETE /api/cells/resources/:resourceId/data/:rowId': 'Delete a row'
+        },
+        access_check: {
+          'POST /api/cells/access/check': 'Check access to a specific field',
+          'POST /api/cells/access/check-batch': 'Check access to multiple fields',
+          'POST /api/cells/access/filter': 'Filter arbitrary data through policies'
+        }
       }
     },
     concepts: {
@@ -152,7 +180,14 @@ app.get('/', (req, res) => {
         operators: ['equals', 'not_equals', 'contains', 'in', 'greater_than', 'less_than', 'matches']
       },
       actions: ['create', 'read', 'update', 'delete'],
-      effects: ['allow', 'deny']
+      effects: ['allow', 'deny'],
+      cell_level: {
+        description: 'Field/cell-level access control with masking and redaction',
+        field_attributes: ['sensitivity', 'pii', 'classification', 'data_type'],
+        field_effects: ['allow', 'deny', 'mask', 'redact'],
+        masking: 'Partial data hiding (e.g., SSN: ***-**-1234)',
+        redaction: 'Complete replacement with placeholder'
+      }
     }
   });
 });

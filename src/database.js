@@ -98,6 +98,87 @@ async function initializeDatabase() {
     )
   `);
 
+  // ============================================
+  // CELL/FIELD LEVEL ACCESS CONTROL TABLES
+  // ============================================
+  
+  // Resource fields define the structure (schema) of a resource
+  // Each field can have its own security classification
+  db.run(`
+    CREATE TABLE IF NOT EXISTS resource_fields (
+      id TEXT PRIMARY KEY,
+      resource_id TEXT NOT NULL,
+      field_name TEXT NOT NULL,
+      field_type TEXT DEFAULT 'string',
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE,
+      UNIQUE(resource_id, field_name)
+    )
+  `);
+
+  // Field-level attributes (e.g., classification, sensitivity, pii)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS field_attributes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      field_id TEXT NOT NULL,
+      attribute_name TEXT NOT NULL,
+      attribute_value TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (field_id) REFERENCES resource_fields(id) ON DELETE CASCADE,
+      UNIQUE(field_id, attribute_name)
+    )
+  `);
+
+  // Actual data stored in resource fields (the cells)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS resource_data (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      resource_id TEXT NOT NULL,
+      field_id TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      cell_value TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE,
+      FOREIGN KEY (field_id) REFERENCES resource_fields(id) ON DELETE CASCADE,
+      UNIQUE(resource_id, field_id, row_id)
+    )
+  `);
+
+  // Field-level policies (which fields can be accessed)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS field_policies (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      resource_type TEXT,
+      field_pattern TEXT,
+      effect TEXT NOT NULL CHECK(effect IN ('allow', 'deny', 'mask', 'redact')),
+      mask_value TEXT DEFAULT '***REDACTED***',
+      priority INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Field policy conditions
+  db.run(`
+    CREATE TABLE IF NOT EXISTS field_policy_conditions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      policy_id TEXT NOT NULL,
+      subject_type TEXT NOT NULL CHECK(subject_type IN ('user', 'resource', 'field', 'environment', 'action')),
+      attribute_name TEXT NOT NULL,
+      operator TEXT NOT NULL CHECK(operator IN ('equals', 'not_equals', 'contains', 'in', 'greater_than', 'less_than', 'matches')),
+      attribute_value TEXT NOT NULL,
+      FOREIGN KEY (policy_id) REFERENCES field_policies(id) ON DELETE CASCADE
+    )
+  `);
+
+  // ============================================
+  // ORIGINAL TABLES CONTINUED
+  // ============================================
+
   db.run(`
     CREATE TABLE IF NOT EXISTS policies (
       id TEXT PRIMARY KEY,
@@ -128,8 +209,9 @@ async function initializeDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT,
       resource_id TEXT,
+      field_id TEXT,
       action TEXT NOT NULL,
-      decision TEXT NOT NULL CHECK(decision IN ('allow', 'deny')),
+      decision TEXT NOT NULL CHECK(decision IN ('allow', 'deny', 'mask', 'redact')),
       policy_id TEXT,
       reason TEXT,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -152,6 +234,14 @@ async function initializeDatabase() {
   db.run('CREATE INDEX IF NOT EXISTS idx_policy_conditions_policy_id ON policy_conditions(policy_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON access_audit_log(user_id)');
   db.run('CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON access_audit_log(timestamp)');
+  
+  // Cell-level indexes
+  db.run('CREATE INDEX IF NOT EXISTS idx_resource_fields_resource_id ON resource_fields(resource_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_field_attributes_field_id ON field_attributes(field_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_resource_data_resource_id ON resource_data(resource_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_resource_data_field_id ON resource_data(field_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_resource_data_row_id ON resource_data(row_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_field_policy_conditions ON field_policy_conditions(policy_id)');
 
   saveDatabase(db);
   db.close();
