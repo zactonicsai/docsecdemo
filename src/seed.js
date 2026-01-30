@@ -11,21 +11,22 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
-// Ensure data directory exists
-const dataDir = path.join(__dirname, '../data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
 const { initializeDatabase, getDatabase } = require('./database');
 
-// Initialize fresh database
-console.log('Initializing database...');
-initializeDatabase();
+async function seed() {
+  // Ensure data directory exists
+  const dataDir = path.join(__dirname, '../data');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
 
-const db = getDatabase();
+  // Initialize fresh database
+  console.log('Initializing database...');
+  await initializeDatabase();
 
-console.log('Seeding database with example data...\n');
+  const db = await getDatabase();
+
+  console.log('Seeding database with example data...\n');
 
 // Create Users
 const users = [
@@ -305,3 +306,13 @@ console.log(`curl -X POST http://localhost:3000/api/access/check \\
 
 console.log('\n# Get all permissions for eve on System Architecture');
 console.log(`curl http://localhost:3000/api/access/permissions/${users[4].id}/${resources[4].id}`);
+
+  // Save and close database
+  db.close();
+}
+
+// Run the seed function
+seed().catch(err => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});

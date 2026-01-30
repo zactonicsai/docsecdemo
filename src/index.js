@@ -17,18 +17,6 @@ const fs = require('fs');
 const { initializeDatabase } = require('./database');
 const { authenticate, requireRole, optionalAuth } = require('./middleware/auth');
 
-// Ensure data directory exists
-const dataDir = path.join(__dirname, '../data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-// Initialize database
-console.log('Initializing database...');
-const db = initializeDatabase();
-db.close();
-console.log('Database initialized successfully');
-
 // Import routes
 const usersRouter = require('./routes/users');
 const resourcesRouter = require('./routes/resources');
@@ -180,9 +168,31 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`ABAC/CBAC System running on http://0.0.0.0:${PORT}`);
-  console.log('API documentation available at /');
-});
+// Async startup function
+async function startServer() {
+  try {
+    // Ensure data directory exists
+    const dataDir = path.join(__dirname, '../data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    // Initialize database
+    console.log('Initializing database...');
+    await initializeDatabase();
+    console.log('Database initialized successfully');
+
+    // Start server
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`ABAC/CBAC System running on http://0.0.0.0:${PORT}`);
+      console.log('API documentation available at /');
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = app;
