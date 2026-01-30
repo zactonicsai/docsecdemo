@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  # Keycloak Database
+  keycloak-db:
+    image: postgres:15-alpine
+    container_name: abac-keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_password
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    networks:
+      - abac-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Keycloak Identity Provider
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: abac-keycloak
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_password
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_LOG_LEVEL: info
+      KC_METRICS_ENABLED: true
+      KC_HEALTH_ENABLED: true
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-config.json:/opt/keycloak/data/import/realm-config.json:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    networks:
+      - abac-network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ABAC API Service
+  abac-api:
+    build: .
+    container_name: abac-api
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - DB_PATH=/app/data/abac.db
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=abac-realm
+      - KEYCLOAK_CLIENT_ID=abac-api
+      - KEYCLOAK_CLIENT_SECRET=abac-api-secret-change-in-production
+      - DISABLE_AUTH=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - abac-data:/app/data
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      - abac-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Seed service (run once to populate sample data)
+  seed:
+    build: .
+    container_name: abac-seed
+    command: npm run seed
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/abac.db
+    volumes:
+      - abac-data:/app/data
+    networks:
+      - abac-network
+    profiles:
+      - seed
+
+  # Development mode with auth disabled
+  abac-api-dev:
+    build: .
+    container_name: abac-api-dev
+    environment:
+      - PORT=3000
+      - NODE_ENV=development
+      - DB_PATH=/app/data/abac-dev.db
+      - DISABLE_AUTH=true
+    ports:
+      - "3001:3000"
+    volumes:
+      - abac-data-dev:/app/data
+    networks:
+      - abac-network
+    profiles:
+      - dev
+
+volumes:
+  keycloak-db-data:
+    driver: local
+  abac-data:
+    driver: local
+  abac-data-dev:
+    driver: local
+
+networks:
+  abac-network:
+    driver: bridge

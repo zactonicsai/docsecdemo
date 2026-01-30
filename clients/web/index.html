@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABAC API Web Client</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        body {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .config-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .config-panel h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover {
+            background: #545b62;
+        }
+        button.success {
+            background: #28a745;
+        }
+        button.success:hover {
+            background: #1e7e34;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #bd2130;
+        }
+        .status {
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .panels {
+                grid-template-columns: 1fr;
+            }
+            .form-row {
+                flex-direction: column;
+            }
+        }
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .panel h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            overflow: auto;
+            max-height: 400px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .token-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+        .token-info code {
+            background: #f1f1f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 ABAC API Web Client</h1>
+
+    <!-- Configuration Panel -->
+    <div class="config-panel">
+        <h2>Configuration</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Keycloak URL</label>
+                <input type="text" id="keycloakUrl" value="http://localhost:8080">
+            </div>
+            <div class="form-group">
+                <label>Realm</label>
+                <input type="text" id="realm" value="abac-realm">
+            </div>
+            <div class="form-group">
+                <label>API URL</label>
+                <input type="text" id="apiUrl" value="http://localhost:3000">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Client ID</label>
+                <input type="text" id="clientId" value="abac-webapp">
+            </div>
+            <div class="form-group">
+                <label>Client Secret</label>
+                <input type="password" id="clientSecret" value="abac-webapp-secret-change-in-production">
+            </div>
+        </div>
+    </div>
+
+    <!-- Authentication Panel -->
+    <div class="config-panel">
+        <h2>Authentication</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="username" value="admin">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" value="admin123">
+            </div>
+        </div>
+        <button onclick="login()">🔑 Login</button>
+        <button onclick="logout()" class="secondary">🚪 Logout</button>
+        <button onclick="refreshToken()" class="secondary">🔄 Refresh Token</button>
+        
+        <div id="authStatus" class="status info hidden"></div>
+        <div id="tokenInfo" class="token-info hidden"></div>
+    </div>
+
+    <!-- API Panels -->
+    <div class="panels">
+        <!-- Users Panel -->
+        <div class="panel">
+            <h3>👥 Users</h3>
+            <button onclick="listUsers()">List Users</button>
+            <button onclick="getTokenInfo()" class="success">Token Info</button>
+            <div id="usersResult" class="result">Click a button to see results...</div>
+        </div>
+
+        <!-- Resources Panel -->
+        <div class="panel">
+            <h3>📁 Resources</h3>
+            <button onclick="listResources()">List Resources</button>
+            <div id="resourcesResult" class="result">Click a button to see results...</div>
+        </div>
+
+        <!-- Policies Panel -->
+        <div class="panel">
+            <h3>📜 Policies</h3>
+            <button onclick="listPolicies()">List Policies</button>
+            <div id="policiesResult" class="result">Click a button to see results...</div>
+        </div>
+
+        <!-- Access Check Panel -->
+        <div class="panel">
+            <h3>🔒 Access Check</h3>
+            <div class="form-group">
+                <label>User ID</label>
+                <input type="text" id="checkUserId" placeholder="Select from Users list">
+            </div>
+            <div class="form-group">
+                <label>Resource ID</label>
+                <input type="text" id="checkResourceId" placeholder="Select from Resources list">
+            </div>
+            <div class="form-group">
+                <label>Action</label>
+                <select id="checkAction">
+                    <option value="read">Read</option>
+                    <option value="create">Create</option>
+                    <option value="update">Update</option>
+                    <option value="delete">Delete</option>
+                </select>
+            </div>
+            <button onclick="checkAccess()" class="success">Check Access</button>
+            <div id="accessResult" class="result">Configure and click Check Access...</div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let accessToken = null;
+        let refreshTokenValue = null;
+        let tokenExpiry = null;
+
+        // Get config values
+        function getConfig() {
+            return {
+                keycloakUrl: document.getElementById('keycloakUrl').value,
+                realm: document.getElementById('realm').value,
+                apiUrl: document.getElementById('apiUrl').value,
+                clientId: document.getElementById('clientId').value,
+                clientSecret: document.getElementById('clientSecret').value
+            };
+        }
+
+        // Show status message
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('authStatus');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.classList.remove('hidden');
+        }
+
+        // Show token info
+        function showTokenInfo(token) {
+            try {
+                // Decode JWT payload (base64)
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const exp = new Date(payload.exp * 1000);
+                const tokenInfoEl = document.getElementById('tokenInfo');
+                tokenInfoEl.innerHTML = `
+                    <strong>User:</strong> <code>${payload.preferred_username || payload.sub}</code> | 
+                    <strong>Expires:</strong> <code>${exp.toLocaleTimeString()}</code> |
+                    <strong>Roles:</strong> <code>${(payload.realm_access?.roles || []).join(', ')}</code>
+                `;
+                tokenInfoEl.classList.remove('hidden');
+            } catch (e) {
+                console.error('Error decoding token:', e);
+            }
+        }
+
+        // Login
+        async function login() {
+            const config = getConfig();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            const tokenUrl = `${config.keycloakUrl}/realms/${config.realm}/protocol/openid-connect/token`;
+            
+            try {
+                const response = await fetch(tokenUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        grant_type: 'password',
+                        client_id: config.clientId,
+                        client_secret: config.clientSecret,
+                        username: username,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showStatus(`Login failed: ${data.error_description || data.error}`, 'error');
+                    return;
+                }
+
+                accessToken = data.access_token;
+                refreshTokenValue = data.refresh_token;
+                tokenExpiry = Date.now() + (data.expires_in * 1000);
+
+                showStatus(`✅ Logged in as ${username}`, 'success');
+                showTokenInfo(accessToken);
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Logout
+        function logout() {
+            accessToken = null;
+            refreshTokenValue = null;
+            tokenExpiry = null;
+            showStatus('🚪 Logged out', 'info');
+            document.getElementById('tokenInfo').classList.add('hidden');
+        }
+
+        // Refresh token
+        async function refreshToken() {
+            if (!refreshTokenValue) {
+                showStatus('No refresh token available', 'error');
+                return;
+            }
+
+            const config = getConfig();
+            const tokenUrl = `${config.keycloakUrl}/realms/${config.realm}/protocol/openid-connect/token`;
+            
+            try {
+                const response = await fetch(tokenUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        grant_type: 'refresh_token',
+                        client_id: config.clientId,
+                        client_secret: config.clientSecret,
+                        refresh_token: refreshTokenValue
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showStatus(`Refresh failed: ${data.error_description || data.error}`, 'error');
+                    return;
+                }
+
+                accessToken = data.access_token;
+                refreshTokenValue = data.refresh_token;
+                tokenExpiry = Date.now() + (data.expires_in * 1000);
+
+                showStatus('🔄 Token refreshed', 'success');
+                showTokenInfo(accessToken);
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Make API request
+        async function apiRequest(method, endpoint, body = null) {
+            if (!accessToken) {
+                return { error: 'Not authenticated. Please login first.' };
+            }
+
+            const config = getConfig();
+            const url = `${config.apiUrl}${endpoint}`;
+
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                };
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(url, options);
+                return await response.json();
+            } catch (error) {
+                return { error: error.message };
+            }
+        }
+
+        // API functions
+        async function listUsers() {
+            const result = await apiRequest('GET', '/api/users');
+            document.getElementById('usersResult').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function listResources() {
+            const result = await apiRequest('GET', '/api/resources');
+            document.getElementById('resourcesResult').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function listPolicies() {
+            const result = await apiRequest('GET', '/api/policies');
+            document.getElementById('policiesResult').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function getTokenInfo() {
+            const result = await apiRequest('GET', '/api/token-info');
+            document.getElementById('usersResult').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function checkAccess() {
+            const userId = document.getElementById('checkUserId').value;
+            const resourceId = document.getElementById('checkResourceId').value;
+            const action = document.getElementById('checkAction').value;
+
+            if (!userId || !resourceId) {
+                document.getElementById('accessResult').textContent = 'Please enter User ID and Resource ID';
+                return;
+            }
+
+            const result = await apiRequest('POST', '/api/access/check', {
+                user_id: userId,
+                resource_id: resourceId,
+                action: action
+            });
+            document.getElementById('accessResult').textContent = JSON.stringify(result, null, 2);
+        }
+    </script>
+</body>
+</html>

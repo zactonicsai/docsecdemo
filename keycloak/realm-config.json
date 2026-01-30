@@ -1,0 +1,325 @@
+{
+  "id": "abac-realm",
+  "realm": "abac-realm",
+  "displayName": "ABAC System Realm",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Full administrative access to ABAC system"
+      },
+      {
+        "name": "policy-manager",
+        "description": "Can create and manage policies"
+      },
+      {
+        "name": "user-manager",
+        "description": "Can create and manage users"
+      },
+      {
+        "name": "resource-manager",
+        "description": "Can create and manage resources"
+      },
+      {
+        "name": "auditor",
+        "description": "Read-only access to audit logs"
+      },
+      {
+        "name": "user",
+        "description": "Basic user role"
+      }
+    ],
+    "client": {
+      "abac-api": [
+        {
+          "name": "admin",
+          "description": "API admin role"
+        },
+        {
+          "name": "read",
+          "description": "Read-only API access"
+        },
+        {
+          "name": "write",
+          "description": "Write API access"
+        }
+      ]
+    }
+  },
+  "defaultRoles": ["user"],
+  "clients": [
+    {
+      "clientId": "abac-api",
+      "name": "ABAC API",
+      "description": "Backend API for ABAC system",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "abac-api-secret-change-in-production",
+      "bearerOnly": true,
+      "consentRequired": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "abac-webapp",
+      "name": "ABAC Web Application",
+      "description": "Frontend web application for ABAC system",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "abac-webapp-secret-change-in-production",
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:8081/*",
+        "https://localhost:3000/*",
+        "https://localhost:8081/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:8081",
+        "https://localhost:3000",
+        "https://localhost:8081"
+      ],
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ]
+    },
+    {
+      "clientId": "abac-service",
+      "name": "ABAC Service Account",
+      "description": "Service-to-service authentication",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "abac-service-secret-change-in-production",
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "abac-cli",
+      "name": "ABAC CLI Tool",
+      "description": "Command-line interface client (public)",
+      "enabled": true,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:8400/callback",
+        "urn:ietf:wg:oauth:2.0:oob"
+      ],
+      "fullScopeAllowed": true
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@example.com",
+      "firstName": "System",
+      "lastName": "Administrator",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin", "user"],
+      "clientRoles": {
+        "abac-api": ["admin", "read", "write"]
+      }
+    },
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "firstName": "Alice",
+      "lastName": "Anderson",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["policy-manager", "user"],
+      "clientRoles": {
+        "abac-api": ["read", "write"]
+      },
+      "attributes": {
+        "department": ["Engineering"],
+        "clearance_level": ["5"]
+      }
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.com",
+      "firstName": "Bob",
+      "lastName": "Brown",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user-manager", "user"],
+      "clientRoles": {
+        "abac-api": ["read", "write"]
+      },
+      "attributes": {
+        "department": ["HR"],
+        "clearance_level": ["3"]
+      }
+    },
+    {
+      "username": "charlie",
+      "enabled": true,
+      "email": "charlie@example.com",
+      "firstName": "Charlie",
+      "lastName": "Chen",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "charlie123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["auditor", "user"],
+      "clientRoles": {
+        "abac-api": ["read"]
+      },
+      "attributes": {
+        "department": ["Finance"],
+        "clearance_level": ["2"]
+      }
+    },
+    {
+      "username": "viewer",
+      "enabled": true,
+      "email": "viewer@example.com",
+      "firstName": "View",
+      "lastName": "Only",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "viewer123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"],
+      "clientRoles": {
+        "abac-api": ["read"]
+      }
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "abac-scope",
+      "description": "ABAC system scope",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "department",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "department",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "clearance_level",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "clearance_level",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "clearance_level",
+            "jsonType.label": "int"
+          }
+        }
+      ]
+    }
+  ],
+  "components": {
+    "org.keycloak.keys.KeyProvider": [
+      {
+        "name": "rsa-generated",
+        "providerId": "rsa-generated",
+        "config": {
+          "priority": ["100"]
+        }
+      }
+    ]
+  },
+  "browserSecurityHeaders": {
+    "contentSecurityPolicyReportOnly": "",
+    "xContentTypeOptions": "nosniff",
+    "xRobotsTag": "none",
+    "xFrameOptions": "SAMEORIGIN",
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
+    "xXSSProtection": "1; mode=block",
+    "strictTransportSecurity": "max-age=31536000; includeSubDomains"
+  }
+}

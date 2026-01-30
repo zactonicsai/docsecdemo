@@ -1,0 +1,20 @@
+{
+  "name": "abac-cbac-system",
+  "version": "1.0.0",
+  "description": "Attribute/Claims-Based Access Control System with CRUD API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/seed.js",
+    "test": "node src/test-api.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.3",
+    "express": "^4.18.2",
+    "uuid": "^9.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.1.0",
+    "cors": "^2.8.5"
+  }
+}
